@@ -45,7 +45,7 @@ import com.rssreader.app.vm.AppViewModel
 fun ArticlesScreen(vm: AppViewModel, nav: NavHostController, feedId: Long?) {
     val items by remember(feedId) { vm.articlesFlow(feedId) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val feeds by vm.feeds
+    val feeds by vm.feeds.collectAsStateWithLifecycle()
     val feedTitle = feeds.firstOrNull { it.id == feedId }?.title ?: "Все статьи"
 
     Column(Modifier.fillMaxSize()) {

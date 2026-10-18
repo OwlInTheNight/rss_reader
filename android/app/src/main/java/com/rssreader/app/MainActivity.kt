@@ -15,7 +15,7 @@ import com.rssreader.app.playback.PlaybackConnection
 import com.rssreader.app.playback.PlaybackService
 import com.rssreader.app.ui.App
 import com.rssreader.app.ui.theme.RssTheme
-import java.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.ListenableFuture
 
 class MainActivity : ComponentActivity() {
 

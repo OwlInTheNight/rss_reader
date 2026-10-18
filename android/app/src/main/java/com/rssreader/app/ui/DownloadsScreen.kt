@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rssreader.app.data.MediaRow
 import com.rssreader.app.playback.PlaybackConnection
 import com.rssreader.app.vm.AppViewModel
@@ -42,8 +43,8 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadsScreen(vm: AppViewModel, nav: NavHostController) {
-    val done by vm.downloaded
-    val active by vm.active
+    val done by vm.downloaded.collectAsStateWithLifecycle()
+    val active by vm.active.collectAsStateWithLifecycle()
     var progress by remember { mutableStateOf<Map<Long, Pair<Int, String>>>(emptyMap()) }
 
     LaunchedEffect(active) {

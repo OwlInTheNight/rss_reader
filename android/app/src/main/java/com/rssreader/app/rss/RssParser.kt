@@ -79,7 +79,7 @@ object RssParser {
                                     (parser.getAttributeValue(null, "fileSize")
                                         ?: parser.getAttributeValue(null, "filesize"))?.toLongOrNull(),
                                 )
-                            } else if (b != null) {
+                            } else {
                                 b.inContent = true
                             }
                         }

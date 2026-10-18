@@ -38,14 +38,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rssreader.app.data.Feed
 import com.rssreader.app.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FeedsScreen(vm: AppViewModel, nav: NavHostController) {
-    val feeds by vm.feeds
-    val counts by vm.counts
+    val feeds by vm.feeds.collectAsStateWithLifecycle()
+    val counts by vm.counts.collectAsStateWithLifecycle()
     var addDialog by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Feed?>(null) }
 
