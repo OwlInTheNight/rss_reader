@@ -36,7 +36,7 @@ class AttachmentRow(QWidget):
 
         size = m.get("size")
         size_lbl = QLabel(format_size(size) if size else "")
-        size_lbl.setStyleSheet("color: #888;")
+        size_lbl.setProperty("role", "secondary")
 
         h.addWidget(icon)
         h.addWidget(name_lbl, 1)
@@ -45,6 +45,7 @@ class AttachmentRow(QWidget):
         if m.get("file_path"):
             play_text = "▶ Смотреть" if is_video_path(m["file_path"]) else "▶ Слушать"
             b_play = QPushButton(play_text)
+            b_play.setObjectName("accentButton")
             b_play.clicked.connect(
                 lambda _=False, mid=m["id"]: self.play_requested.emit(mid)
             )
@@ -59,6 +60,7 @@ class AttachmentRow(QWidget):
             if yt_dlp_available():
                 audio_ext = "mp3" if ffmpeg_available() else "m4a"
                 b_video = QPushButton("⬇ Видео")
+                b_video.setObjectName("accentButton")
                 b_video.clicked.connect(
                     lambda _=False, mid=m["id"]: self.download_requested.emit(mid, False)
                 )
@@ -75,6 +77,7 @@ class AttachmentRow(QWidget):
                 h.addWidget(b)
         else:
             b = QPushButton("⬇ Скачать")
+            b.setObjectName("accentButton")
             b.clicked.connect(
                 lambda _=False, mid=m["id"]: self.download_requested.emit(mid, False)
             )
@@ -94,7 +97,7 @@ class ArticleDetails(QWidget):
         v = QVBoxLayout(self)
         v.setContentsMargins(8, 8, 8, 8)
 
-        self.title_label = QLabel("Выберите статью")
+        self.title_label = QLabel("")
         self.title_label.setWordWrap(True)
         font = self.title_label.font()
         font.setPointSize(12)
@@ -102,12 +105,11 @@ class ArticleDetails(QWidget):
         self.title_label.setFont(font)
 
         self.meta_label = QLabel("")
-        self.meta_label.setStyleSheet("color: #777;")
+        self.meta_label.setProperty("role", "secondary")
         self.meta_label.setWordWrap(True)
 
         self.link_btn = QPushButton("🔗 Открыть оригинал в браузере")
         self.link_btn.setFlat(True)
-        self.link_btn.setStyleSheet("color: #1a6ec8; border: none; text-align: left;")
         self.link_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.link_btn.clicked.connect(
             lambda: self._link and self.open_link_requested.emit(self._link)
@@ -131,12 +133,21 @@ class ArticleDetails(QWidget):
 
     def clear_article(self) -> None:
         self._link = None
-        self.title_label.setText("Выберите статью в списке")
+        self.title_label.setText("")
         self.meta_label.setText("")
         self.link_btn.hide()
-        self.browser.setHtml("")
         self._clear_media()
         self.media_group.hide()
+
+    def show_placeholder(self, title: str, subtitle: str) -> None:
+        """Приглашение, когда статьи не выбраны / их нет."""
+        self.clear_article()
+        self.browser.setHtml(
+            "<div style='color:#8a8f98; text-align:center; margin-top:28px;"
+            " font-size:13px;'>"
+            f"<span style='font-size:34px;'>📰</span><br><br>"
+            f"<b style='color:inherit;'>{title}</b><br>{subtitle}</div>"
+        )
 
     def show_article(self, article: dict, media_rows) -> None:
         self._link = article.get("link")
@@ -145,7 +156,7 @@ class ArticleDetails(QWidget):
         self.meta_label.setText(" · ".join(p for p in parts if p))
         self.link_btn.setVisible(bool(self._link))
 
-        html = article.get("summary") or "<i style='color:#888'>Нет описания</i>"
+        html = article.get("summary") or "<i style='color:#8a8f98'>Нет описания</i>"
         self.browser.setHtml(html)
 
         self._clear_media()

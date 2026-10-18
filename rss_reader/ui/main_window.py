@@ -3,20 +3,25 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QBrush, QColor, QDesktopServices, QFont
-from PySide6.QtWidgets import (QFileDialog, QInputDialog, QLineEdit, QLabel,
-                               QListWidget, QListWidgetItem, QMainWindow, QMenu,
-                               QMessageBox, QSplitter, QStackedWidget, QToolBar,
-                               QVBoxLayout, QWidget)
+from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor,
+                           QDesktopServices, QFont)
+from PySide6.QtWidgets import (QApplication, QFileDialog, QHBoxLayout,
+                               QInputDialog, QLabel, QLineEdit, QListWidget,
+                               QListWidgetItem, QMainWindow, QMenu,
+                               QMessageBox, QSplitter, QStackedWidget,
+                               QToolButton, QVBoxLayout, QWidget)
 
 from .. import APP_NAME, __version__
 from ..db import Database
 from ..download_manager import DownloadManager, DownloadTask
 from ..feed_worker import RefreshWorker
+from ..opml import export_opml, import_opml
 from ..player import Player
+from ..theme import build_qss, detect_system_dark, theme_colors
 from ..utils import (default_db_path, default_downloads_dir, ext_from_mime,
                      ext_from_url, format_dt, is_video_path, sanitize_filename,
                      seed_default_feeds)
+from .article_delegate import ArticleDelegate, DATA_ROLE
 from .details import ArticleDetails
 from .downloads_panel import DownloadsPanel
 from .player_bar import PlayerBar
@@ -24,12 +29,23 @@ from .video_window import VideoWindow
 
 ROLE = Qt.ItemDataRole.UserRole
 
+AUTO_REFRESH_OPTIONS = [
+    (0, "Выключено"),
+    (5, "Каждые 5 минут"),
+    (15, "Каждые 15 минут"),
+    (30, "Каждые 30 минут"),
+    (60, "Каждый час"),
+    (180, "Каждые 3 часа"),
+]
+DEFAULT_AUTO_REFRESH = 30
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} — RSS-читалка с медиа")
         self.resize(1240, 800)
+        self.setMinimumSize(980, 620)
 
         self.db = Database(default_db_path())
         seed_default_feeds(self.db)
@@ -51,9 +67,25 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._connect_signals()
 
+        self.apply_theme(
+            self.db.get_setting("theme") or
+            ("dark" if detect_system_dark() else "light")
+        )
+
         self.rebuild_feed_list()
         if self.feed_list.currentRow() < 0:
             self.feed_list.setCurrentRow(0)
+
+        self._auto_timer = QTimer(self)
+        self._auto_timer.timeout.connect(lambda: self.refresh_all(auto=True))
+        try:
+            minutes = int(self.db.get_setting("auto_refresh_min") or DEFAULT_AUTO_REFRESH)
+        except ValueError:
+            minutes = DEFAULT_AUTO_REFRESH
+        if minutes not in dict(AUTO_REFRESH_OPTIONS):
+            minutes = DEFAULT_AUTO_REFRESH
+        self._auto_actions[minutes].setChecked(True)
+        self.set_auto_refresh(minutes)
 
         if not os.environ.get("RSSREADER_NO_REFRESH"):
             QTimer.singleShot(200, self.refresh_all)
@@ -62,48 +94,65 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         self._build_menu()
 
-        toolbar = QToolBar("Главная", self)
-        toolbar.setMovable(False)
-        act_add = QAction("➕ Добавить ленту", self)
-        act_add.setShortcut("Ctrl+N")
-        act_add.triggered.connect(self.add_feed_dialog)
-        act_ref = QAction("⟳ Обновить все", self)
-        act_ref.setShortcut("F5")
-        act_ref.triggered.connect(lambda: self.refresh_all())
-        toolbar.addAction(act_add)
-        toolbar.addAction(act_ref)
-        self.addToolBar(toolbar)
-
         central = QWidget()
         root = QVBoxLayout(central)
-        root.setContentsMargins(6, 6, 6, 6)
-        root.setSpacing(6)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(7)
 
-        side = QWidget()
-        side_v = QVBoxLayout(side)
-        side_v.setContentsMargins(0, 0, 0, 0)
+        panel = QWidget()
+        panel.setObjectName("panel")
+        panel_v = QVBoxLayout(panel)
+        panel_v.setContentsMargins(8, 10, 8, 10)
+        panel_v.setSpacing(6)
+
+        header = QHBoxLayout()
         cap = QLabel("ЛЕНТЫ")
-        cap.setStyleSheet("color: #777; font-size: 11px; font-weight: bold;")
-        side_v.addWidget(cap)
+        cap.setProperty("role", "caption")
+        header.addWidget(cap)
+        header.addStretch(1)
+        btn_add = QToolButton()
+        btn_add.setObjectName("iconButton")
+        btn_add.setText("＋")
+        btn_add.setToolTip("Добавить ленту (Ctrl+N)")
+        btn_add.clicked.connect(self.add_feed_dialog)
+        btn_ref = QToolButton()
+        btn_ref.setObjectName("iconButton")
+        btn_ref.setText("⟳")
+        btn_ref.setToolTip("Обновить все ленты (F5)")
+        btn_ref.clicked.connect(lambda: self.refresh_all())
+        header.addWidget(btn_add)
+        header.addWidget(btn_ref)
+        panel_v.addLayout(header)
+
         self.feed_list = QListWidget()
-        self.feed_list.setMinimumWidth(210)
+        self.feed_list.setObjectName("feedList")
+        self.feed_list.setMinimumWidth(220)
         self.feed_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.feed_list.currentItemChanged.connect(self._on_feed_changed)
         self.feed_list.customContextMenuRequested.connect(self._feed_context_menu)
-        side_v.addWidget(self.feed_list)
-        splitter.addWidget(side)
+        panel_v.addWidget(self.feed_list)
+        splitter.addWidget(panel)
 
         self.stack = QStackedWidget()
         self.article_list = QListWidget()
+        self.article_list.setObjectName("articleList")
+        self.article_list.setItemDelegate(ArticleDelegate(self.article_list))
+        self.article_list.setMouseTracking(True)
+        self.article_list.viewport().setMouseTracking(True)
+        self.article_list.setSpacing(2)
         self.article_list.currentItemChanged.connect(self._on_article_changed)
         self.article_list.itemDoubleClicked.connect(self._open_selected_in_browser)
         self.details = ArticleDetails()
         self.art_split = QSplitter(Qt.Orientation.Vertical)
+        self.art_split.setChildrenCollapsible(False)
+        self.art_split.setHandleWidth(7)
         self.art_split.addWidget(self.article_list)
         self.art_split.addWidget(self.details)
-        self.art_split.setSizes([420, 320])
+        self.art_split.setSizes([440, 340])
         self.downloads_panel = DownloadsPanel()
         self.stack.addWidget(self.art_split)
         self.stack.addWidget(self.downloads_panel)
@@ -127,10 +176,40 @@ class MainWindow(QMainWindow):
         a_ref.setShortcut("F5")
         a_ref.triggered.connect(lambda: self.refresh_all())
         m_feeds.addAction(a_ref)
+
+        m_auto = QMenu("Автообновление", self)
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        self._auto_actions = {}
+        for minutes, label in AUTO_REFRESH_OPTIONS:
+            a = QAction(label, self)
+            a.setCheckable(True)
+            group.addAction(a)
+            m_auto.addAction(a)
+            a.triggered.connect(lambda _checked=False, m=minutes: self.set_auto_refresh(m))
+            self._auto_actions[minutes] = a
+        m_feeds.addMenu(m_auto)
+
+        m_feeds.addSeparator()
+        a_imp = QAction("Импорт OPML…", self)
+        a_imp.triggered.connect(self._import_opml)
+        m_feeds.addAction(a_imp)
+        a_exp = QAction("Экспорт OPML…", self)
+        a_exp.triggered.connect(self._export_opml)
+        m_feeds.addAction(a_exp)
         m_feeds.addSeparator()
         a_quit = QAction("Выход", self)
         a_quit.triggered.connect(self.close)
         m_feeds.addAction(a_quit)
+
+        m_view = self.menuBar().addMenu("&Вид")
+        self.action_dark = QAction("🌙 Тёмная тема", self)
+        self.action_dark.setCheckable(True)
+        self.action_dark.setShortcut("Ctrl+T")
+        self.action_dark.toggled.connect(
+            lambda on: self.apply_theme("dark" if on else "light")
+        )
+        m_view.addAction(self.action_dark)
 
         m_media = self.menuBar().addMenu("&Медиа")
         a_dir = QAction("Открыть папку загрузок", self)
@@ -177,6 +256,71 @@ class MainWindow(QMainWindow):
         self.manager.finished.connect(self._on_download_finished)
         self.manager.failed.connect(self._on_download_failed)
 
+    # ============================================================= темы
+    def apply_theme(self, name: str) -> None:
+        self.theme_name = name
+        self.db.set_setting("theme", name)
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(build_qss(theme_colors(name)))
+        delegate = self.article_list.itemDelegate()
+        if isinstance(delegate, ArticleDelegate):
+            delegate.set_colors(theme_colors(name))
+        self.action_dark.setChecked(name == "dark")
+
+    # ==================================================== автообновление
+    def set_auto_refresh(self, minutes: int) -> None:
+        self.db.set_setting("auto_refresh_min", str(minutes))
+        if minutes > 0:
+            self._auto_timer.setInterval(minutes * 60 * 1000)
+            self._auto_timer.start()
+            label = dict(AUTO_REFRESH_OPTIONS).get(minutes, f"{minutes} мин")
+            self.statusBar().showMessage(f"Автообновление: {label.lower()}", 5000)
+        else:
+            self._auto_timer.stop()
+            self.statusBar().showMessage("Автообновление выключено", 5000)
+
+    # ========================================================== OPML
+    def _import_opml(self):
+        start = os.path.join(str(Path.home()), "Downloads")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Импорт OPML", start, "OPML (*.opml *.xml);;Все файлы (*)"
+        )
+        if not path:
+            return
+        try:
+            items = import_opml(path)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.warning(self, "Импорт OPML", f"Не удалось прочитать файл:\n{e}")
+            return
+        added = skipped = 0
+        for url, title in items:
+            if self.db.add_feed(url, title) is None:
+                skipped += 1
+            else:
+                added += 1
+        self.rebuild_feed_list()
+        QMessageBox.information(
+            self, "Импорт OPML",
+            f"Добавлено лент: {added}\nПропущено (уже есть): {skipped}",
+        )
+        if added:
+            self.refresh_all()
+
+    def _export_opml(self):
+        default = os.path.join(str(Path.home()), "Downloads", "rss_reader.opml")
+        path, _ = QFileDialog.getSaveFileName(self, "Экспорт OPML", default, "OPML (*.opml)")
+        if not path:
+            return
+        if not path.lower().endswith(".opml"):
+            path += ".opml"
+        try:
+            export_opml(self.db.list_feeds(), path)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.warning(self, "Экспорт OPML", f"Не удалось записать файл:\n{e}")
+            return
+        self.statusBar().showMessage(f"Ленты экспортированы: {path}", 6000)
+
     # ========================================================== ленты
     def rebuild_feed_list(self):
         self._rebuilding = True
@@ -196,7 +340,7 @@ class MainWindow(QMainWindow):
             head = QListWidgetItem("— ЛЕНТЫ —")
             head.setFlags(Qt.ItemFlag.NoItemFlags)
             head.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            head.setForeground(QBrush(QColor("#999")))
+            head.setForeground(QBrush(QColor(theme_colors(self.theme_name)["secondary"])))
             head.setFont(self._font_bold)
             self.feed_list.addItem(head)
 
@@ -299,19 +443,21 @@ class MainWindow(QMainWindow):
         if feed:
             self.refresh_all([feed])
 
-    def refresh_all(self, feeds=None):
+    def refresh_all(self, feeds=None, auto=False):
         if self._refresh_worker is not None:
             try:
                 if self._refresh_worker.isRunning():
-                    self.statusBar().showMessage("Обновление уже выполняется…", 3000)
+                    if not auto:
+                        self.statusBar().showMessage("Обновление уже выполняется…", 3000)
                     return
             except RuntimeError:
                 pass
         feeds = feeds or self.db.list_feeds()
         if not feeds:
-            self.statusBar().showMessage(
-                "Нет лент — добавьте первую через «➕ Добавить ленту»", 6000
-            )
+            if not auto:
+                self.statusBar().showMessage(
+                    "Нет лент — добавьте первую через «＋»", 6000
+                )
             return
         self.statusBar().showMessage("Обновление лент…")
         worker = RefreshWorker(self.db.path, feeds)
@@ -342,39 +488,44 @@ class MainWindow(QMainWindow):
         rows = self.db.articles(self.current_feed)
         self.article_list.clear()
         for r in rows:
-            label = r["title"] or "(без заголовка)"
+            meta = format_dt(r["published"])
             if self.current_feed is None and r["feed_title"]:
-                label = f"[{r['feed_title']}]  {label}"
-            it = QListWidgetItem(label)
-            tip = format_dt(r["published"])
-            if r["feed_title"]:
-                tip = (tip + "\n" if tip else "") + r["feed_title"]
-            it.setToolTip(tip)
-            if not r["is_read"]:
-                it.setFont(self._font_bold)
-            it.setData(ROLE, r["id"])
+                meta = " · ".join(p for p in (meta, r["feed_title"]) if p)
+            data = dict(r)
+            data["meta_line"] = meta
+            it = QListWidgetItem()
+            it.setData(DATA_ROLE, data)
             self.article_list.addItem(it)
         self._current_article_id = None
         self.details.clear_article()
         if rows:
             self.statusBar().showMessage(f"Статей: {len(rows)}", 4000)
+        else:
+            self.details.show_placeholder(
+                "Лента пуста", "Обновите ленты (F5) или дождитесь новых публикаций"
+            )
 
     def _on_article_changed(self, current, _previous):
         if current is None:
             return
-        article_id = current.data(ROLE)
+        data = current.data(DATA_ROLE) or {}
+        article_id = data.get("id")
+        if not article_id:
+            return
         row = self.db.article(article_id)
         if not row:
             return
         self._current_article_id = article_id
         if not row["is_read"]:
             self.db.set_read(article_id)
-            current.setFont(self.font())
+            data["is_read"] = True
+            current.setData(DATA_ROLE, data)
         media = self.db.media_for_article(article_id)
         self.details.show_article(row, media)
 
     def _open_selected_in_browser(self, item):
-        row = self.db.article(item.data(ROLE))
+        data = item.data(DATA_ROLE) or {}
+        row = self.db.article(data.get("id"))
         if row and row["link"]:
             QDesktopServices.openUrl(QUrl(row["link"]))
 

@@ -47,12 +47,14 @@ class PlayerBar(QWidget):
 
         self.time_lbl = QLabel("0:00 / 0:00")
         self.time_lbl.setMinimumWidth(110)
+        self.time_lbl.setProperty("role", "secondary")
 
         self.track_lbl = QLabel("")
-        self.track_lbl.setStyleSheet("color: #777;")
+        self.track_lbl.setProperty("role", "secondary")
         self.track_lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
         vol_icon = QLabel("🔊")
+        vol_icon.setProperty("role", "secondary")
         self.vol = QSlider(Qt.Orientation.Horizontal)
         self.vol.setRange(0, 100)
         self.vol.setValue(80)

@@ -31,7 +31,7 @@ class DownloadsPanel(QWidget):
         font.setPointSize(11)
         title.setFont(font)
         hint = QLabel("аудио и видео из ваших лент")
-        hint.setStyleSheet("color: #888;")
+        hint.setProperty("role", "secondary")
         btn_folder = QPushButton("📁 Открыть папку")
         btn_folder.clicked.connect(self.open_folder_requested.emit)
         head.addWidget(title)
@@ -112,6 +112,7 @@ class DownloadsPanel(QWidget):
         self.table.setItem(row, 1, status)
         done = QLabel("Готово")
         done.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        done.setProperty("role", "secondary")
         self.table.setCellWidget(row, 2, done)
         self.table.setCellWidget(row, 3, self._buttons_widget(r["id"], active=False))
 
