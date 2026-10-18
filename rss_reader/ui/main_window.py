@@ -243,7 +243,7 @@ class MainWindow(QMainWindow):
         d.open_link_requested.connect(lambda url: QDesktopServices.openUrl(QUrl(url)))
         d.download_requested.connect(self.start_download)
         d.play_requested.connect(self.play_media)
-        d.reveal_requested.connect(self.reveal_path)
+        d.reveal_requested.connect(self.reveal_media)
 
         # загрузки
         p = self.downloads_panel

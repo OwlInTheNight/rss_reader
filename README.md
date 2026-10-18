@@ -1,6 +1,9 @@
 # 📰 RSS Reader — читалка RSS с загрузкой и воспроизведением медиа
 
-Десктопное приложение для **Windows**: читайте RSS/Atom-ленты, скачивайте аудио- и видеофайлы из статей и воспроизводите их прямо в программе.
+Приложение в двух вариантах:
+
+- **Windows** (Python + PySide6) — читайте RSS/Atom-ленты, скачивайте аудио и видео из статей и воспроизводите их прямо в программе.
+- **Android** (Kotlin + Jetpack Compose) — то же самое на телефоне: Samsung Galaxy S24 Ultra / S25 FE и любые устройства с Android 10+.
 
 ![Скриншот: интерфейс](docs/screenshot.png)
 
@@ -39,6 +42,28 @@ python main.py
 
 Вместо venv можно установить зависимости глобально: `pip install -r requirements.txt`.
 
+## Android-версия
+
+Приложение в папке `android/` (Kotlin + Jetpack Compose, Material 3 с динамическими цветами):
+
+- Ленты: добавление/удаление, pull-to-refresh, автообновление каждые 30 минут (WorkManager)
+- Статьи: список с непрочитанными, чтение описания, открытие оригинала
+- Медиа: скачивание вложений через системный DownloadManager (с уведомлениями и прогрессом), файлы — в `Downloads/RSSReader/<лента>/`
+- Плеер: фоновое аудио с медиасессией и мини-плеером, видео — полноэкранный экран со стандартными элементами управления
+- Тема: светлая/тёмная следует за системой, на Android 12+ — Material You (цвета обоев)
+
+### Сборка APK
+
+```bash
+cd android
+gradle assembleDebug
+# результат: app/build/outputs/apk/debug/app-debug.apk
+```
+
+Требуются JDK 17 и Android SDK (platform 35, build-tools 35). Проще всего собирать в Android Studio: открыть папку `android` как проект → Build → Build APK(s).
+
+Готовый APK для установки: [docs/rss-reader-android.apk](docs/rss-reader-android.apk) (debug-подпись; при установке разрешите «Неизвестные источники»).
+
 ## Использование
 
 1. **Добавьте ленту**: кнопка `＋` в списке лент или `Ленты → Добавить ленту` (Ctrl+N). Примеры:
@@ -62,11 +87,21 @@ python main.py
 
 ```
 rss_reader/
-├── main.py                  # точка входа (иконка, QApplication)
+├── main.py                  # точка входа Windows-версии (иконка, QApplication)
 ├── requirements.txt
 ├── assets/app.ico           # иконка приложения
 ├── scripts/make_icon.py     # генератор иконки (QPainter → ICO)
-└── rss_reader/
+├── android/                 # Android-приложение (Kotlin + Jetpack Compose)
+│   ├── app/src/main/java/com/rssreader/app/
+│   │   ├── data/Db.kt           # Room: ленты, статьи, медиа
+│   │   ├── rss/RssParser.kt     # разбор RSS/Atom (enclosure, media:content)
+│   │   ├── rss/FeedSyncer.kt    # загрузка и обновление лент (OkHttp)
+│   │   ├── downloads/           # очередь загрузок (системный DownloadManager)
+│   │   ├── playback/            # фоновый плеер (Media3 ExoPlayer + MediaSession)
+│   │   ├── work/SyncWorker.kt   # автообновление каждые 30 минут
+│   │   └── ui/                  # экраны (Compose, Material 3)
+│   └── ...
+└── rss_reader/              # Python-пакет Windows-версии
     ├── db.py                # SQLite-хранилище (ленты, статьи, медиа, настройки)
     ├── feed_worker.py       # фоновое обновление лент
     ├── download_manager.py  # очередь загрузок (requests + yt-dlp)

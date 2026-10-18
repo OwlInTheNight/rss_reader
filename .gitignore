@@ -22,3 +22,6 @@ Thumbs.db
 # Сборка
 build/
 dist/
+*.apk
+*.aab
+!docs/*.apk
